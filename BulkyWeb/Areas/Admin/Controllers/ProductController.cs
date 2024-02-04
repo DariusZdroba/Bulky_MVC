@@ -11,16 +11,18 @@ namespace BulkyWeb.Areas.Admin.Controllers
     public class ProductController : Controller
     {
         private readonly IUnitOfWork _unitOfWork;
-        public ProductController(IUnitOfWork unitOfWork)
+        private readonly IWebHostEnvironment _webHostEnvironment;
+        public ProductController(IUnitOfWork unitOfWork, IWebHostEnvironment webHostEnvironment)
         {
             _unitOfWork = unitOfWork;
+            _webHostEnvironment = webHostEnvironment;
         }
         public IActionResult Index()
         {
             List<Product> prodList = _unitOfWork.Product.GetAll().ToList();
             return View(prodList);
         }
-        public IActionResult Create() 
+        public IActionResult Upsert(int? id) 
         {
             ProductVM productVM = new()
             {
@@ -31,42 +33,47 @@ namespace BulkyWeb.Areas.Admin.Controllers
                 }),
                 Product = new Product()
             };
+            if(id== null || id == 0)
+            {
+                //create
             return View(productVM);
+            }
+            else
+            {
+                //update
+                productVM.Product = _unitOfWork.Product.Get(u => u.Id.Equals(id));
+                return View(productVM);
+            }
         }
         [HttpPost]
-        public IActionResult Create(ProductVM prod) 
+        public IActionResult Upsert(ProductVM prod, IFormFile? file) 
         {
-            if(ModelState.IsValid) { 
+            if(ModelState.IsValid) {
+                string wwwRootPath = _webHostEnvironment.WebRootPath;
+                if(file!=null)
+                {
+                    string fileName = Guid.NewGuid().ToString() + Path.GetExtension(file.FileName);
+                    string productPath = Path.Combine(wwwRootPath, @"images\product");
+                    using (var fileStream = new FileStream(Path.Combine(productPath, fileName),FileMode.Create))
+                    {
+                        file.CopyTo(fileStream);
+                    }
+                    prod.Product.ImageUrl = @"\images\product\" + fileName;
+                }
                 _unitOfWork.Product.Add(prod.Product);
                 _unitOfWork.Save();
                 TempData["success"] = "Product created successfuly";
                 return RedirectToAction("Index","Product");
             }
-            return View();
-        }
-        public IActionResult Edit(int id) 
-        {
-            if (id == null || id == 0) return NotFound();
-            Product? productFromDb = _unitOfWork.Product.Get(p => p.Id == id);
-            if(productFromDb == null) return NotFound();
-            return View(productFromDb);
-        }
-        [HttpPost]
-        public IActionResult Edit(Product product) 
-        {
-            foreach (var error in ModelState.Values.SelectMany(v => v.Errors))
+            else
             {
-                Console.WriteLine($"Model error: {error.ErrorMessage}");
+                prod.CategoryList = _unitOfWork.Category.GetAll().Select(u => new SelectListItem
+                {
+                    Text = u.Name,
+                    Value = u.Id.ToString()
+                });
+            return View(prod);
             }
-            if (ModelState.IsValid)
-            {
-                _unitOfWork.Product.Update(product);
-                _unitOfWork.Save();
-                TempData["success"] = "Product edited successfuly";
-                return RedirectToAction("Index", "Product");
-            }
-           
-            return View();
         }
         public IActionResult Delete(int? id) 
         {
