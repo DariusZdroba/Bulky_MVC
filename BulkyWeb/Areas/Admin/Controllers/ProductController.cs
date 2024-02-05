@@ -19,7 +19,7 @@ namespace BulkyWeb.Areas.Admin.Controllers
         }
         public IActionResult Index()
         {
-            List<Product> prodList = _unitOfWork.Product.GetAll().ToList();
+            List<Product> prodList = _unitOfWork.Product.GetAll(includeProperties:"Category").ToList();
             return View(prodList);
         }
         public IActionResult Upsert(int? id) 
@@ -50,17 +50,33 @@ namespace BulkyWeb.Areas.Admin.Controllers
         {
             if(ModelState.IsValid) {
                 string wwwRootPath = _webHostEnvironment.WebRootPath;
-                if(file!=null)
+                if (file != null)
                 {
                     string fileName = Guid.NewGuid().ToString() + Path.GetExtension(file.FileName);
                     string productPath = Path.Combine(wwwRootPath, @"images\product");
+                    
+                    if (!string.IsNullOrEmpty(prod.Product.ImageUrl))
+                    {
+                        //delete old image
+                        var oldImagePath = Path.Combine(wwwRootPath,prod.Product.ImageUrl.TrimStart('\\'));
+
+                        if(System.IO.File.Exists(oldImagePath)) 
+                        {
+                            System.IO.File.Delete(oldImagePath);
+                        }
+                    }
+                    
                     using (var fileStream = new FileStream(Path.Combine(productPath, fileName),FileMode.Create))
                     {
                         file.CopyTo(fileStream);
                     }
                     prod.Product.ImageUrl = @"\images\product\" + fileName;
                 }
-                _unitOfWork.Product.Add(prod.Product);
+                if (prod.Product.Id == 0)
+                    _unitOfWork.Product.Add(prod.Product);
+                else
+                    _unitOfWork.Product.Update(prod.Product);
+
                 _unitOfWork.Save();
                 TempData["success"] = "Product created successfuly";
                 return RedirectToAction("Index","Product");
@@ -92,5 +108,15 @@ namespace BulkyWeb.Areas.Admin.Controllers
             TempData["success"] = "Product deleted successfuly";
             return RedirectToAction("Index", "Product");
         }
+        #region API CALLS
+
+        [HttpGet]
+        public IActionResult GetAll()
+        {
+            List<Product> prodList = _unitOfWork.Product.GetAll(includeProperties: "Category").ToList();
+            return Json(new { data = prodList });   
+        }
+
+        #endregion
     }
 }
